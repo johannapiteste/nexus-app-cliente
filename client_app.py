@@ -6,6 +6,10 @@ from datetime import datetime, timezone, timedelta
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Nexus VIP | Tips", page_icon="🏆", layout="centered")
 
+# Inicializa a memória da sessão para rastrear os bilhetes já vistos pelo cliente
+if 'vistos' not in st.session_state:
+    st.session_state.vistos = set()
+
 def get_db_connection():
     return psycopg2.connect(st.secrets["DATABASE_URL"])
 
@@ -23,6 +27,7 @@ st.markdown("""
     .green {background: #064e3b; color: #34d399;}
     .pendente {background: #78350f; color: #fbbf24;}
     .metric-box {background: #18181b; border: 1px solid #27272a; border-radius: 10px; padding: 15px; text-align: center;}
+    div.stButton > button[kind="primary"] {background-color: #3b82f6; color: #ffffff; border-radius: 8px; font-weight: 700; width: 100%; border: none;}
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
@@ -31,34 +36,81 @@ st.title("🏆 Nexus VIP")
 st.markdown("<p style='color: #a1a1aa; margin-top:-15px;'>Seu portal de análises quantitativas.</p>", unsafe_allow_html=True)
 
 # Abas do Aplicativo do Cliente
-tab1, tab2, tab3, tab4 = st.tabs(["🎫 Em Aberto", "🌟 Vencedores", "⏰ Próximos Jogos", "🏦 Lucro/Perda"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌟 Novos", "🎫 Em Aberto", "🏆 Vencedores", "⏰ Próximos", "🏦 P&L"])
 
-# Puxa os dados do Banco na Nuvem
+# Puxa os dados da Base de Dados na Nuvem
 try:
     conn = get_db_connection()
     df_all = pd.read_sql_query("SELECT * FROM previsoes WHERE ticket_id IS NOT NULL AND ticket_id != '' AND ticket_id NOT LIKE 'OCULTO_%'", conn)
     conn.close()
 except Exception as e:
-    st.error("Erro ao conectar ao banco de dados. Tente novamente mais tarde.")
+    st.error("Erro ao ligar à base de dados. Tente novamente mais tarde.")
     st.stop()
 
 if df_all.empty:
     st.info("Nenhum dado disponível no momento.")
     st.stop()
 
-# --- ABA 1: BILHETES EM ABERTO ---
+# Filtra todos os bilhetes que estão PENDENTES (sem nenhum red)
+bilhetes_abertos_geral = []
+for t_id, group in df_all.groupby('ticket_id'):
+    statuses = group['status_resultado'].str.upper().tolist()
+    if any('PENDENTE' in s for s in statuses) and not any('RED' in s for s in statuses):
+        bilhetes_abertos_geral.append((t_id, group))
+
+# Separa a lógica entre Novos (não vistos) e Em Aberto (já vistos nesta sessão)
+novos_bilhetes = [b for b in bilhetes_abertos_geral if b[0] not in st.session_state.vistos]
+bilhetes_em_aberto = [b for b in bilhetes_abertos_geral if b[0] in st.session_state.vistos]
+
+# --- ABA 1: NOVOS BILHETES ---
 with tab1:
-    st.markdown("### 🎫 Bilhetes Ativos")
-    bilhetes_abertos = []
-    for t_id, group in df_all.groupby('ticket_id'):
-        statuses = group['status_resultado'].str.upper().tolist()
-        if any('PENDENTE' in s for s in statuses) and not any('RED' in s for s in statuses):
-            bilhetes_abertos.append((t_id, group))
-            
-    if not bilhetes_abertos:
-        st.success("Não há bilhetes pendentes no momento. Aguarde a nova varredura do radar!")
+    st.info("ℹ️ Novos bilhetes todos os dias às 22:00 Horas")
+    
+    if not novos_bilhetes:
+        st.success("Não existem bilhetes novos no momento. Acompanhe as suas entradas na aba 'Em Aberto'.")
     else:
-        for t_id, group in bilhetes_abertos:
+        # Botão para mover todos os bilhetes novos para a aba Em Aberto
+        if st.button("✅ Marcar todos como Vistos (Mover para Em Aberto)", type="primary"):
+            for t_id, _ in novos_bilhetes:
+                st.session_state.vistos.add(t_id)
+            st.rerun()
+            
+        for t_id, group in novos_bilhetes:
+            odd_multipla = 1.0
+            for _, j in group.iterrows():
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick or pick in casa_nome: odd_jogo = float(j.get('odd_casa', 1.0))
+                else: odd_jogo = float(j.get('odd_fora', 1.0))
+                odd_jogo = max(odd_jogo, float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0))) if odd_jogo <= 1.0 else odd_jogo
+                odd_multipla *= max(odd_jogo, 1.0)
+                
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #8b5cf6;"><h4>✨ {t_id} (NOVO) <br><span style="color:#8b5cf6; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
+            for _, j in group.iterrows():
+                pick = str(j.get('vencedor_previsto', '')).upper()
+                status = j.get('status_resultado', 'PENDENTE').replace('ARQUIVADO ', '')
+                hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
+                
+                st.markdown(f"""
+                    <div class="game-card">
+                        <div style="font-size:0.75rem; color:#a1a1aa; margin-bottom:4px;">⏰ {hora_str} • {j.get('liga', '')}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:600;">{j['confronto']}</span>
+                            <span style="color:#fbbf24; font-weight:800; font-size:0.85rem;">⏳ {status}</span>
+                        </div>
+                        <div style="margin-top:6px; font-size:0.85rem; color:#e4e4e7;">🎯 Pick: <span style="font-weight:800;">{pick}</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+# --- ABA 2: BILHETES EM ABERTO (Já lidos) ---
+with tab2:
+    st.markdown("### 🎫 Bilhetes Ativos (Acompanhamento)")
+    if not bilhetes_em_aberto:
+        st.info("Os bilhetes que marcar como lidos aparecerão aqui para acompanhamento.")
+    else:
+        for t_id, group in bilhetes_em_aberto:
             odd_multipla = 1.0
             for _, j in group.iterrows():
                 casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
@@ -90,8 +142,8 @@ with tab1:
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA 2: VENCEDORES (HALL DA FAMA) ---
-with tab2:
+# --- ABA 3: VENCEDORES (HALL DA FAMA) ---
+with tab3:
     st.markdown("### 🌟 Hall da Fama")
     bilhetes_vencedores = []
     for t_id, group in df_all.groupby('ticket_id'):
@@ -128,18 +180,16 @@ with tab2:
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA 3: PRÓXIMOS JOGOS ---
-with tab3:
+# --- ABA 4: PRÓXIMOS JOGOS ---
+with tab4:
     st.markdown("### ⏰ Próximos Jogos (Radar)")
     df_pendentes = df_all[df_all['status_resultado'] == 'PENDENTE'].copy()
     
     if df_pendentes.empty:
         st.success("Não há jogos mapeados prestes a começar.")
     else:
-        # Ordena os jogos usando Pandas de forma segura
         jogos_lista = df_pendentes.to_dict('records')
         for j in jogos_lista:
-            # Tenta criar um campo de ordenação falso apenas para organizar a lista
             try:
                 j['sort_time'] = datetime.strptime(f"{j.get('data_jogo', '01/01')} {j.get('hora_jogo', '00:00')}", "%d/%m %H:%M")
             except:
@@ -162,8 +212,8 @@ with tab3:
                 </div>
             """, unsafe_allow_html=True)
 
-# --- ABA 4: LUCRO E PERDA (P&L) ---
-with tab4:
+# --- ABA 5: LUCRO E PERDA (P&L) ---
+with tab5:
     st.markdown("### 🏦 Relatório Financeiro")
     df_tickets = df_all[~df_all['status_resultado'].str.contains('ARQUIVADO', na=False)]
     
