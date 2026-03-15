@@ -3,8 +3,8 @@ import psycopg2
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Nexus VIP | Tips", page_icon="🏆", layout="centered")
+# --- CONFIGURAÇÃO DA PÁGINA (Altera o nome no telemóvel) ---
+st.set_page_config(page_title="Nexus VIP", page_icon="🏆", layout="centered")
 
 # Inicializa a memória da sessão para rastrear os bilhetes já vistos pelo cliente
 if 'vistos' not in st.session_state:
