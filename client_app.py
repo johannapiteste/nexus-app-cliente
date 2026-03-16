@@ -140,9 +140,29 @@ with tab1:
             st.rerun()
             
         for t_id, group in novos_bilhetes:
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #8b5cf6;"><h4>✨ {t_id} (NOVO)</h4>', unsafe_allow_html=True)
+            odd_multipla = 1.0
+            for _, j in group.iterrows():
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
+                else: odd_jogo = float(j.get('odd_fora', 1.0))
+                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+                odd_multipla *= max(odd_jogo, 1.0)
+                
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #8b5cf6;"><h4>✨ {t_id} (NOVO)<br><span style="color:#8b5cf6; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
+                confianca = j.get('confianca', 0)
+                
+                # Cálculo da Odd Individual
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_ind = float(j.get('odd_casa', 1.0))
+                else: odd_ind = float(j.get('odd_fora', 1.0))
+                if odd_ind <= 1.0: odd_ind = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+
                 st.markdown(f"""
                     <div class="game-card">
                         <div style="font-size:0.75rem; color:#a1a1aa; margin-bottom:4px;">⏰ {hora_str} • {j.get('liga', '')}</div>
@@ -150,7 +170,10 @@ with tab1:
                             <span style="font-weight:600;">{j['confronto']}</span>
                             <span style="color:#fbbf24; font-weight:800; font-size:0.85rem;">⏳ PENDENTE</span>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85rem;">🎯 Pick: <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                        <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center; font-size:0.85rem;">
+                            <div>🎯 Pick: <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                            <div style="color:#a1a1aa; font-size:0.75rem;">Odd: <span style="color:#f8fafc; font-weight:700;">{odd_ind:.2f}</span> | Conf: <span style="color:#8b5cf6; font-weight:800;">{confianca}%</span></div>
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -161,12 +184,32 @@ with tab2:
         st.info("Os bilhetes que marcar como lidos aparecerão aqui.")
     else:
         for t_id, group in bilhetes_em_aberto:
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #3b82f6;"><h4>⏳ {t_id}</h4>', unsafe_allow_html=True)
+            odd_multipla = 1.0
+            for _, j in group.iterrows():
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
+                else: odd_jogo = float(j.get('odd_fora', 1.0))
+                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+                odd_multipla *= max(odd_jogo, 1.0)
+                
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #3b82f6;"><h4>⏳ {t_id}<br><span style="color:#3b82f6; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
                 status = j.get('status_resultado', 'PENDENTE').replace('ARQUIVADO ', '')
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 cor_status = "#34d399" if "GREEN" in status else "#fbbf24"
                 icon = "✅" if "GREEN" in status else "⏳"
+                confianca = j.get('confianca', 0)
+                
+                # Cálculo da Odd Individual
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_ind = float(j.get('odd_casa', 1.0))
+                else: odd_ind = float(j.get('odd_fora', 1.0))
+                if odd_ind <= 1.0: odd_ind = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+
                 st.markdown(f"""
                     <div class="game-card">
                         <div style="font-size:0.75rem; color:#a1a1aa; margin-bottom:4px;">⏰ {hora_str} • {j.get('liga', '')}</div>
@@ -174,7 +217,10 @@ with tab2:
                             <span style="font-weight:600;">{j['confronto']}</span>
                             <span style="color:{cor_status}; font-weight:800; font-size:0.85rem;">{icon} {status}</span>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85rem;">🎯 Pick: <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                        <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center; font-size:0.85rem;">
+                            <div>🎯 Pick: <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                            <div style="color:#a1a1aa; font-size:0.75rem;">Odd: <span style="color:#f8fafc; font-weight:700;">{odd_ind:.2f}</span> | Conf: <span style="color:#3b82f6; font-weight:800;">{confianca}%</span></div>
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -190,10 +236,30 @@ with tab3:
     if not bilhetes_vencedores: st.info("Aguardando os primeiros Greens 100% da rodada atual.")
     else:
         for t_id, group in bilhetes_vencedores:
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #10b981;"><h4>🏆 {t_id}</h4>', unsafe_allow_html=True)
+            odd_multipla = 1.0
+            for _, j in group.iterrows():
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
+                else: odd_jogo = float(j.get('odd_fora', 1.0))
+                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+                odd_multipla *= max(odd_jogo, 1.0)
+                
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #10b981;"><h4>🏆 {t_id} <br><span style="color:#10b981; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
                 placar = j.get('placar_real', '-')
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
+                confianca = j.get('confianca', 0)
+                
+                # Cálculo da Odd Individual
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_ind = float(j.get('odd_casa', 1.0))
+                else: odd_ind = float(j.get('odd_fora', 1.0))
+                if odd_ind <= 1.0: odd_ind = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+
                 st.markdown(f"""
                     <div class="game-card">
                         <div style="font-size:0.75rem; color:#a1a1aa; margin-bottom:4px;">⏰ {hora_str} • {j.get('liga', '')}</div>
@@ -201,7 +267,10 @@ with tab3:
                             <span style="font-weight:600;">{j['confronto']}</span>
                             <span class="status-badge green">{placar}</span>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85rem; color:#10b981;">✅ <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                        <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center; font-size:0.85rem;">
+                            <div style="color:#10b981;">✅ <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                            <div style="color:#a1a1aa; font-size:0.75rem;">Odd: <span style="color:#f8fafc; font-weight:700;">{odd_ind:.2f}</span> | Conf: <span style="color:#10b981; font-weight:800;">{confianca}%</span></div>
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -220,12 +289,10 @@ with tab4:
         jogos_futuros = []
         for j in jogos_lista:
             try:
-                # Usa a hora e dia reais em relação ao ano atual para verificar se o jogo já começou ou ficou para trás
                 dt_str = f"{j.get('data_jogo', '01/01')}/{ano_atual} {j.get('hora_jogo', '00:00')}"
                 sort_t = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
                 j['sort_time'] = sort_t
                 
-                # Se o jogo ainda NÃO aconteceu (hora futura), entra na lista
                 if sort_t > agora:
                     jogos_futuros.append(j)
             except:
@@ -239,14 +306,24 @@ with tab4:
             for j in jogos_futuros:
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 ticket = j.get('ticket_id', 'Bilhete Desconhecido')
+                confianca = j.get('confianca', 0)
+                
+                # Cálculo da Odd Individual
+                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
+                pick = str(j.get('vencedor_previsto', '')).strip().lower()
+                if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
+                elif casa_nome in pick: odd_ind = float(j.get('odd_casa', 1.0))
+                else: odd_ind = float(j.get('odd_fora', 1.0))
+                if odd_ind <= 1.0: odd_ind = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
+
                 st.markdown(f"""
                     <div class="ticket-card" style="border-left: 4px solid #f59e0b; padding:12px;">
                         <div style="font-size:0.75rem; color:#fbbf24; font-weight:800; margin-bottom:4px;">⏰ {hora_str} • Pertence ao {ticket}</div>
                         <div style="font-weight:800; font-size:1.05rem; margin-bottom:4px;">⚽ {j['confronto']}</div>
-                        <div style="font-size:0.85rem; color:#a1a1aa;">🏆 {j.get('liga', '')}</div>
-                        <div style="margin-top:8px; border-top:1px solid #27272a; padding-top:8px;">
-                            <span style="font-size:0.85rem; color:#e4e4e7;">Entrada da IA: </span>
-                            <span style="color:#f8fafc; font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span>
+                        <div style="font-size:0.85rem; color:#a1a1aa; margin-bottom:8px;">🏆 {j.get('liga', '')}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #27272a; padding-top:8px; font-size:0.85rem;">
+                            <div><span style="color:#e4e4e7;">Entrada IA: </span><span style="color:#f8fafc; font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
+                            <div style="color:#a1a1aa; font-size:0.75rem;">Odd: <span style="color:#f8fafc; font-weight:700;">{odd_ind:.2f}</span> | Conf: <span style="color:#f59e0b; font-weight:800;">{confianca}%</span></div>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
