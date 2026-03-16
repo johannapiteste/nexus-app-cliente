@@ -155,7 +155,6 @@ with tab1:
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 confianca = j.get('confianca', 0)
                 
-                # Cálculo da Odd Individual
                 casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
                 pick = str(j.get('vencedor_previsto', '')).strip().lower()
                 if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
@@ -202,7 +201,6 @@ with tab2:
                 icon = "✅" if "GREEN" in status else "⏳"
                 confianca = j.get('confianca', 0)
                 
-                # Cálculo da Odd Individual
                 casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
                 pick = str(j.get('vencedor_previsto', '')).strip().lower()
                 if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
@@ -252,7 +250,6 @@ with tab3:
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 confianca = j.get('confianca', 0)
                 
-                # Cálculo da Odd Individual
                 casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
                 pick = str(j.get('vencedor_previsto', '')).strip().lower()
                 if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
@@ -308,7 +305,6 @@ with tab4:
                 ticket = j.get('ticket_id', 'Bilhete Desconhecido')
                 confianca = j.get('confianca', 0)
                 
-                # Cálculo da Odd Individual
                 casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
                 pick = str(j.get('vencedor_previsto', '')).strip().lower()
                 if 'empate' in pick: odd_ind = float(j.get('odd_empate', 1.0))
@@ -336,13 +332,29 @@ with tab5:
         st.info("O relatório será gerado assim que houver bilhetes finalizados (Green/Red).")
     else:
         dados_banca = []
+        dados_acertos = []
+        
         for t_id, group in df_tickets.groupby('ticket_id'):
             statuses = group['status_resultado'].str.upper().tolist()
-            is_pendente = any('PENDENTE' in s for s in statuses)
+            if any('PENDENTE' in s for s in statuses): continue 
+            
+            # --- COLETA PARA O GRÁFICO DE ACERTOS POR BILHETE ---
+            greens_count = sum(1 for s in statuses if 'GREEN' in s)
+            reds_count = sum(1 for s in statuses if 'RED' in s)
+            
+            # Formata o nome do bilhete para ficar mais curto no gráfico
+            nome_curto = str(t_id).replace('OCULTO_', '').replace('🛡️ Ticket Quant ', 'Tk ')
+            
+            dados_acertos.append({
+                "Ticket": nome_curto,
+                "Acertos ✅": greens_count,
+                "Erros ❌": reds_count,
+                "DataOriginal": pd.to_datetime(group['timestamp'].iloc[0])
+            })
+            
+            # --- CÁLCULO FINANCEIRO (P&L) ---
             is_red = any('RED' in s for s in statuses)
             is_green = all('GREEN' in s for s in statuses)
-            
-            if is_pendente or (not is_red and not is_green): continue 
             
             odd_m = 1.0
             for _, j in group.iterrows():
@@ -354,9 +366,7 @@ with tab5:
                 if odd_j <= 1.0: odd_j = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
                 odd_m *= max(odd_j, 1.0)
             
-            dt_obj = pd.to_datetime(group['timestamp'].iloc[0])
-            mes_ano = dt_obj.strftime("%m/%Y")
-            
+            mes_ano = pd.to_datetime(group['timestamp'].iloc[0]).strftime("%m/%Y")
             investimento = 1.00
             retorno = (investimento * odd_m) if is_green else 0.00
             lucro = retorno - investimento
@@ -392,6 +402,15 @@ with tab5:
                     </div>
                 </div>
             """, unsafe_allow_html=True)
+            
+            # --- NOVO GRÁFICO: ACERTOS POR BILHETE ---
+            st.markdown("#### 🎯 Acertos vs Erros por Bilhete")
+            if dados_acertos:
+                df_acertos = pd.DataFrame(dados_acertos).sort_values('DataOriginal')
+                chart_data = df_acertos.set_index('Ticket')[['Acertos ✅', 'Erros ❌']]
+                
+                # Exibe um gráfico de barras empilhadas (verde e vermelho)
+                st.bar_chart(chart_data, color=["#10b981", "#ef4444"])
             
             st.markdown("#### 📈 Evolução da Banca Mensal")
             df_mensal = df_banca.groupby('Mês')['Lucro'].sum().reset_index()
