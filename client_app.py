@@ -3,22 +3,8 @@ import psycopg2
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 
-# --- CONFIGURAÇÃO DA PÁGINA (Altera o nome no telemóvel) ---
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Nexus VIP", page_icon="🏆", layout="centered")
-
-# --- INJEÇÃO DE MANIFESTO PARA PWA (Opcional, tentar forçar nome e ícone) ---
-st.markdown("""
-    <script>
-        document.title = "Nexus VIP";
-        var link = document.querySelector("link[rel~='icon']");
-        if (!link) {
-            link = document.createElement('link');
-            link.rel = 'icon';
-            document.head.appendChild(link);
-        }
-        link.href = 'https://em-content.zobj.net/source/apple/354/trophy_1f3c6.png';
-    </script>
-""", unsafe_allow_html=True)
 
 def get_db_connection():
     return psycopg2.connect(st.secrets["DATABASE_URL"])
@@ -34,17 +20,24 @@ if 'logged_in' not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown("""
         <style>
+        .block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+        header {visibility: hidden;} #MainMenu {visibility: hidden;} footer {visibility: hidden;}
         .stApp {background-color: #09090b; color: #f8fafc;}
-        .login-box {background: #18181b; padding: 30px; border-radius: 12px; border: 1px solid #27272a; text-align: center; margin-top: 50px;}
-        div.stButton > button[kind="primary"] {background-color: #3b82f6; width: 100%; border:none; padding: 10px; border-radius: 8px; font-weight: bold;}
+        div[data-testid="column"]:nth-of-type(2) {
+            background-color: #18181b; padding: 30px; border-radius: 12px;
+            border: 1px solid #27272a; margin-top: 10vh;
+        }
+        div.stButton > button[kind="primary"] {
+            background-color: #3b82f6; width: 100%; border:none; 
+            padding: 10px; border-radius: 8px; font-weight: bold; margin-top: 10px;
+        }
         </style>
     """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("<div class='login-box'>", unsafe_allow_html=True)
-        st.title("🏆 Nexus VIP")
-        st.write("Acesso Exclusivo")
+        st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🏆 Nexus VIP</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #a1a1aa;'>Acesso Exclusivo</p>", unsafe_allow_html=True)
         
         user_input = st.text_input("Utilizador").lower()
         pass_input = st.text_input("Password", type="password")
@@ -63,14 +56,10 @@ if not st.session_state.logged_in:
                         st.session_state.logged_in = True
                         st.session_state.username = user_input
                         st.rerun()
-                    else:
-                        st.error("Credenciais inválidas. Verifique os dados.")
-                except Exception as e:
-                    st.error("Erro na base de dados. Verifique se os Secrets estão configurados.")
-            else:
-                st.warning("Preencha todos os campos para entrar.")
-        st.markdown("</div>", unsafe_allow_html=True)
-    st.stop() # Bloqueia a execução do resto do código se não estiver logado
+                    else: st.error("Credenciais inválidas.")
+                except Exception as e: st.error("Erro na base de dados.")
+            else: st.warning("Preencha todos os campos.")
+    st.stop()
 
 # --- ESTILIZAÇÃO DO APP LOGADO ---
 st.markdown("""
@@ -99,60 +88,59 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌟 Novos", "🎫 Aberto", "🏆 Vence
 try:
     conn = get_db_connection()
     df_all = pd.read_sql_query("SELECT * FROM previsoes WHERE ticket_id IS NOT NULL AND ticket_id != '' AND ticket_id NOT LIKE 'OCULTO_%'", conn)
-    
-    # Busca bilhetes já vistos pelo utilizador atual diretamente da Base de Dados
     cursor = conn.cursor()
     cursor.execute("SELECT ticket_id FROM bilhetes_vistos WHERE username = %s", (st.session_state.username,))
     vistos_db = set([r[0] for r in cursor.fetchall()])
-    
+    cursor.close()
+    conn.close()
 except Exception as e:
     st.error("Erro ao ligar à base de dados.")
     st.stop()
 
 if df_all.empty:
     st.info("Nenhum dado disponível no momento.")
-    try:
-        cursor.close()
-        conn.close()
-    except: pass
     st.stop()
 
 bilhetes_abertos_geral = []
 for t_id, group in df_all.groupby('ticket_id'):
     statuses = group['status_resultado'].str.upper().tolist()
-    # Puxa bilhetes que não foram concluídos (não têm Red, e ainda têm Pendentes)
     if any('PENDENTE' in s for s in statuses) and not any('RED' in s for s in statuses):
         bilhetes_abertos_geral.append((t_id, group))
 
-# Cruza os bilhetes com os que o utilizador já marcou como "Vistos"
 novos_bilhetes = [b for b in bilhetes_abertos_geral if b[0] not in vistos_db]
 bilhetes_em_aberto = [b for b in bilhetes_abertos_geral if b[0] in vistos_db]
 
-# --- ABA 1: NOVOS BILHETES ---
+if 'notificado_hoje' not in st.session_state:
+    st.session_state.notificado_hoje = True
+    if novos_bilhetes: st.toast(f"✨ Tem {len(novos_bilhetes)} novo(s) bilhete(s) à sua espera!", icon="🎯")
+    teve_green_recente = False
+    for t_id, group in df_all.groupby('ticket_id'):
+        statuses = group['status_resultado'].str.upper().tolist()
+        if not any('PENDENTE' in s for s in statuses) and not any('RED' in s for s in statuses) and len(statuses) > 0:
+            ultima_atualizacao = pd.to_datetime(group['timestamp'].iloc[0])
+            if (get_brt_time().replace(tzinfo=None) - ultima_atualizacao).days <= 1:
+                teve_green_recente = True
+    if teve_green_recente:
+        st.toast("🏆 Um dos seus bilhetes bateu GREEN nas últimas 24h!", icon="✅")
+        st.balloons()
+
 with tab1:
     st.info("ℹ️ Novos bilhetes todos os dias às 22:00 Horas")
     if not novos_bilhetes:
         st.success("Não existem bilhetes novos no momento. Verifique a aba 'Aberto'.")
     else:
         if st.button("✅ Marcar todos como Vistos (Mover para Aberto)", type="primary"):
+            conn = get_db_connection()
+            cursor = conn.cursor()
             for t_id, _ in novos_bilhetes:
-                # Insere os bilhetes na base de dados para que fiquem permanentemente salvos como vistos para este cliente
                 cursor.execute("INSERT INTO bilhetes_vistos (username, ticket_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (st.session_state.username, t_id))
             conn.commit()
+            cursor.close()
+            conn.close()
             st.rerun()
             
         for t_id, group in novos_bilhetes:
-            odd_multipla = 1.0
-            for _, j in group.iterrows():
-                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
-                pick = str(j.get('vencedor_previsto', '')).strip().lower()
-                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
-                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
-                else: odd_jogo = float(j.get('odd_fora', 1.0))
-                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
-                odd_multipla *= max(odd_jogo, 1.0)
-                
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #8b5cf6;"><h4>✨ {t_id} (NOVO)<br><span style="color:#8b5cf6; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #8b5cf6;"><h4>✨ {t_id} (NOVO)</h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 st.markdown(f"""
@@ -167,30 +155,18 @@ with tab1:
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA 2: BILHETES EM ABERTO ---
 with tab2:
     st.markdown("### 🎫 Bilhetes Ativos (Acompanhamento)")
     if not bilhetes_em_aberto:
         st.info("Os bilhetes que marcar como lidos aparecerão aqui.")
     else:
         for t_id, group in bilhetes_em_aberto:
-            odd_multipla = 1.0
-            for _, j in group.iterrows():
-                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
-                pick = str(j.get('vencedor_previsto', '')).strip().lower()
-                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
-                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
-                else: odd_jogo = float(j.get('odd_fora', 1.0))
-                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
-                odd_multipla *= max(odd_jogo, 1.0)
-                
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #3b82f6;"><h4>⏳ {t_id}<br><span style="color:#3b82f6; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #3b82f6;"><h4>⏳ {t_id}</h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
                 status = j.get('status_resultado', 'PENDENTE').replace('ARQUIVADO ', '')
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 cor_status = "#34d399" if "GREEN" in status else "#fbbf24"
                 icon = "✅" if "GREEN" in status else "⏳"
-                
                 st.markdown(f"""
                     <div class="game-card">
                         <div style="font-size:0.75rem; color:#a1a1aa; margin-bottom:4px;">⏰ {hora_str} • {j.get('liga', '')}</div>
@@ -203,7 +179,6 @@ with tab2:
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA 3: VENCEDORES (HALL DA FAMA) ---
 with tab3:
     st.markdown("### 🌟 Hall da Fama")
     bilhetes_vencedores = []
@@ -212,23 +187,11 @@ with tab3:
         if not any('PENDENTE' in s for s in statuses) and not any('RED' in s for s in statuses) and len(statuses) > 0:
             bilhetes_vencedores.append((t_id, group))
             
-    if not bilhetes_vencedores:
-        st.info("Aguardando os primeiros Greens 100% da rodada atual.")
+    if not bilhetes_vencedores: st.info("Aguardando os primeiros Greens 100% da rodada atual.")
     else:
         for t_id, group in bilhetes_vencedores:
-            odd_multipla = 1.0
+            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #10b981;"><h4>🏆 {t_id}</h4>', unsafe_allow_html=True)
             for _, j in group.iterrows():
-                casa_nome = str(j.get('confronto', '')).split(' vs ')[0].strip().lower()
-                pick = str(j.get('vencedor_previsto', '')).strip().lower()
-                if 'empate' in pick: odd_jogo = float(j.get('odd_empate', 1.0))
-                elif casa_nome in pick: odd_jogo = float(j.get('odd_casa', 1.0))
-                else: odd_jogo = float(j.get('odd_fora', 1.0))
-                if odd_jogo <= 1.0: odd_jogo = max(float(j.get('odd_casa', 1.0)), float(j.get('odd_fora', 1.0)))
-                odd_multipla *= max(odd_jogo, 1.0)
-                
-            st.markdown(f'<div class="ticket-card" style="border-left: 4px solid #10b981;"><h4>🏆 {t_id} <br><span style="color:#10b981; font-size:0.9rem;">🔥 Odd Múltipla: {odd_multipla:.2f}</span></h4>', unsafe_allow_html=True)
-            for _, j in group.iterrows():
-                pick = str(j.get('vencedor_previsto', '')).upper()
                 placar = j.get('placar_real', '-')
                 hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
                 st.markdown(f"""
@@ -238,44 +201,56 @@ with tab3:
                             <span style="font-weight:600;">{j['confronto']}</span>
                             <span class="status-badge green">{placar}</span>
                         </div>
-                        <div style="margin-top:6px; font-size:0.85rem; color:#10b981;">✅ <span style="font-weight:800;">{pick}</span></div>
+                        <div style="margin-top:6px; font-size:0.85rem; color:#10b981;">✅ <span style="font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span></div>
                     </div>
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA 4: PRÓXIMOS JOGOS ---
 with tab4:
     st.markdown("### ⏰ Próximos Jogos")
     df_pendentes = df_all[df_all['status_resultado'] == 'PENDENTE'].copy()
     
     if df_pendentes.empty:
-        st.success("Não há jogos mapeados prestes a começar.")
+        st.success("Não há jogos pendentes mapeados.")
     else:
         jogos_lista = df_pendentes.to_dict('records')
+        agora = get_brt_time().replace(tzinfo=None)
+        ano_atual = agora.year
+        
+        jogos_futuros = []
         for j in jogos_lista:
             try:
-                j['sort_time'] = datetime.strptime(f"{j.get('data_jogo', '01/01')} {j.get('hora_jogo', '00:00')}", "%d/%m %H:%M")
-            except:
-                j['sort_time'] = datetime.now()
+                # Usa a hora e dia reais em relação ao ano atual para verificar se o jogo já começou ou ficou para trás
+                dt_str = f"{j.get('data_jogo', '01/01')}/{ano_atual} {j.get('hora_jogo', '00:00')}"
+                sort_t = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
+                j['sort_time'] = sort_t
                 
-        jogos_lista = sorted(jogos_lista, key=lambda x: x['sort_time'])
+                # Se o jogo ainda NÃO aconteceu (hora futura), entra na lista
+                if sort_t > agora:
+                    jogos_futuros.append(j)
+            except:
+                pass
+                
+        jogos_futuros = sorted(jogos_futuros, key=lambda x: x['sort_time'])
         
-        for j in jogos_lista:
-            hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
-            ticket = j.get('ticket_id', 'Bilhete Desconhecido')
-            st.markdown(f"""
-                <div class="ticket-card" style="border-left: 4px solid #f59e0b; padding:12px;">
-                    <div style="font-size:0.75rem; color:#fbbf24; font-weight:800; margin-bottom:4px;">⏰ {hora_str} • Pertence ao {ticket}</div>
-                    <div style="font-weight:800; font-size:1.05rem; margin-bottom:4px;">⚽ {j['confronto']}</div>
-                    <div style="font-size:0.85rem; color:#a1a1aa;">🏆 {j.get('liga', '')}</div>
-                    <div style="margin-top:8px; border-top:1px solid #27272a; padding-top:8px;">
-                        <span style="font-size:0.85rem; color:#e4e4e7;">Entrada da IA: </span>
-                        <span style="color:#f8fafc; font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span>
+        if not jogos_futuros:
+            st.success("Todos os jogos dos bilhetes atuais já começaram ou estão pendentes de resultado.")
+        else:
+            for j in jogos_futuros:
+                hora_str = f"{j.get('data_jogo', '--/--')} {j.get('hora_jogo', '--:--')} BRT"
+                ticket = j.get('ticket_id', 'Bilhete Desconhecido')
+                st.markdown(f"""
+                    <div class="ticket-card" style="border-left: 4px solid #f59e0b; padding:12px;">
+                        <div style="font-size:0.75rem; color:#fbbf24; font-weight:800; margin-bottom:4px;">⏰ {hora_str} • Pertence ao {ticket}</div>
+                        <div style="font-weight:800; font-size:1.05rem; margin-bottom:4px;">⚽ {j['confronto']}</div>
+                        <div style="font-size:0.85rem; color:#a1a1aa;">🏆 {j.get('liga', '')}</div>
+                        <div style="margin-top:8px; border-top:1px solid #27272a; padding-top:8px;">
+                            <span style="font-size:0.85rem; color:#e4e4e7;">Entrada da IA: </span>
+                            <span style="color:#f8fafc; font-weight:800;">{str(j.get('vencedor_previsto', '')).upper()}</span>
+                        </div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-# --- ABA 5: LUCRO E PERDA (P&L) ---
 with tab5:
     st.markdown("### 🏦 Relatório Financeiro")
     df_tickets = df_all[~df_all['status_resultado'].str.contains('ARQUIVADO', na=False)]
@@ -326,15 +301,15 @@ with tab5:
             
             st.markdown(f"""
                 <div style="display:flex; gap:10px; margin-bottom:20px;">
-                    <div class="metric-box" style="flex:1;">
+                    <div class="metric-box" style="flex:1; background:#18181b; padding:15px; border-radius:10px; border:1px solid #27272a; text-align:center;">
                         <div style="color:#a1a1aa; font-size:0.85rem;">Bilhetes no Mês</div>
                         <div style="font-size:1.5rem; font-weight:800;">{len(df_mes_atual)}</div>
                     </div>
-                    <div class="metric-box" style="flex:1;">
-                        <div style="color:#a1a1aa; font-size:0.85rem;">Lucro Líquido ({mes_atual})</div>
+                    <div class="metric-box" style="flex:1; background:#18181b; padding:15px; border-radius:10px; border:1px solid #27272a; text-align:center;">
+                        <div style="color:#a1a1aa; font-size:0.85rem;">Lucro Líquido</div>
                         <div style="font-size:1.5rem; font-weight:800; color:{cor_lucro};">R$ {l_liq:.2f}</div>
                     </div>
-                    <div class="metric-box" style="flex:1;">
+                    <div class="metric-box" style="flex:1; background:#18181b; padding:15px; border-radius:10px; border:1px solid #27272a; text-align:center;">
                         <div style="color:#a1a1aa; font-size:0.85rem;">ROI (%)</div>
                         <div style="font-size:1.5rem; font-weight:800; color:{cor_lucro};">{roi:.1f}%</div>
                     </div>
@@ -344,9 +319,3 @@ with tab5:
             st.markdown("#### 📈 Evolução da Banca Mensal")
             df_mensal = df_banca.groupby('Mês')['Lucro'].sum().reset_index()
             st.bar_chart(df_mensal.set_index('Mês')['Lucro'])
-
-# Fecha a base de dados de forma segura no final do script
-try:
-    cursor.close()
-    conn.close()
-except: pass
